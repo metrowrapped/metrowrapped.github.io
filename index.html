@@ -115,6 +115,35 @@ input[readonly]{opacity:.75;background:var(--bd)}
 const SUPABASE_URL="https://upqwodrqmoxrcwihqzbh.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY="sb_publishable_WeBxJzn-nrFA_oQbLaJtVQ_SvdZYJkS";
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+const API_URL="https://long-rice-dd31.lightingleboss.workers.dev";
+
+async function api(path,options={}){
+  const {data:{session}}=await sb.auth.getSession();
+
+  if(!session?.access_token){
+    throw new Error("Session Supabase invalide. Reconnecte-toi.");
+  }
+
+  const headers={
+    ...(options.headers||{}),
+    Authorization:`Bearer ${session.access_token}`
+  };
+
+  if(options.body) headers["Content-Type"]="application/json";
+
+  const res=await fetch(API_URL+path,{...options,headers});
+
+  let result;
+  try{
+    result=await res.json();
+  }catch{
+    throw new Error("Réponse invalide du serveur.");
+  }
+
+  if(!res.ok) throw new Error(result.error||"Erreur API ("+res.status+")");
+
+  return result;
+}
 
 const L=[
 ['1','#FFCE00','Métro','La Défense|Esplanade de la Défense|Pont de Neuilly|Les Sablons|Porte Maillot|Argentine|Charles de Gaulle–Étoile|George V|Franklin D. Roosevelt|Champs-Élysées–Clemenceau|Concorde|Tuileries|Palais Royal–Musée du Louvre|Louvre–Rivoli|Châtelet|Hôtel de Ville|Saint-Paul|Bastille|Gare de Lyon|Reuilly–Diderot|Nation|Porte de Vincennes|Saint-Mandé|Bérault|Château de Vincennes'],
@@ -183,25 +212,109 @@ try{
  }else{const {error}=await sb.auth.signInWithPassword({email:em,password:pw});if(error)throw error}
  const {data}=await sb.auth.getSession();if(data.session)await enter(data.session.user);
 }catch(e){err(e.message||'Une erreur est survenue. Réessaie.')}}
+
 async function enter(user){
- const {data:pr,error:pe}=await sb.from('profiles').select('*').eq('id',user.id).maybeSingle();if(pe)console.warn(pe);
- ME={id:user.id,email:user.email,pseudo:pr?.username||user.user_metadata?.username||user.email.split('@')[0],line:pr?.favorite_line||'1',station:pr?.favorite_station||'',share:!!pr?.share_stats};
- cur=line(ME.line)?ME.line:'1';favL=cur;G('auth').classList.add('hide');G('app').classList.remove('hide');G('av').textContent=(ME.pseudo[0]||'?').toUpperCase();G('d').value=nowLocal();legs=[];comp=[];chg=null;show('go');
- await loadCloud();}
+ const result=await api('/api/me');
+ const pr=result.profile||{};
+ ME={
+  id:user.id,
+  email:user.email,
+  pseudo:pr.username||user.user_metadata?.username||user.email.split('@')[0],
+  line:pr.favorite_line||'1',
+  station:pr.favorite_station||'',
+  share:!!pr.share_stats
+ };
+ cur=line(ME.line)?ME.line:'1';
+ favL=cur;
+ G('auth').classList.add('hide');
+ G('app').classList.remove('hide');
+ G('av').textContent=(ME.pseudo[0]||'?').toUpperCase();
+ G('d').value=nowLocal();
+ legs=[];
+ comp=[];
+ chg=null;
+ show('go');
+ await loadCloud();
+}
+
 async function loadCloud(){
  if(!ME)return;
- const [tr,profiles,rels]=await Promise.all([
-  sb.from('trips').select('*').eq('user_id',ME.id).order('travelled_at',{ascending:false}),
-  sb.from('profiles').select('id,username,favorite_line,favorite_station,share_stats,stats').eq('share_stats',true).limit(500),
-  sb.from('friendships').select('*').or(`sender_id.eq.${ME.id},receiver_id.eq.${ME.id}`)
- ]);
- if(tr.error){console.error(tr.error);G('msg').textContent='Impossible de charger les trajets : '+tr.error.message;T=[]}else T=(tr.data||[]).map(x=>({id:x.id,l:x.line_id,a:x.origin,b:x.destination,p:x.stations||[x.origin,x.destination],d:x.duration_seconds,k:x.distance_meters,t:new Date(x.travelled_at).getTime(),legs:Array.isArray(x.legs)&&x.legs.length?x.legs:null,co:Array.isArray(x.companions)?x.companions:[]}));
- PROF={};(profiles.data||[]).forEach(x=>{PROF[x.id]={pseudo:x.username||'Utilisateur',line:x.favorite_line||'1',station:x.favorite_station||'',share:!!x.share_stats,sum:x.stats||null}});
- REL=rels.data||[];FR=REL.filter(x=>x.status==='accepted').map(x=>x.sender_id===ME.id?x.receiver_id:x.sender_id);
- ME.badges=badgeIds(T);renderCmp();if(isTab('hist'))hist();if(isTab('st'))stats();if(isTab('fr'))renderFr();
+ try{
+  const [tr,profiles,rels]=await Promise.all([
+   api('/api/trips'),
+   api('/api/profiles'),
+   api('/api/friendships')
+  ]);
+
+  T=(tr||[]).map(x=>({
+   id:x.id,
+   l:x.line_id,
+   a:x.origin,
+   b:x.destination,
+   p:x.stations||[x.origin,x.destination],
+   d:x.duration_seconds,
+   k:x.distance_meters,
+   t:new Date(x.travelled_at).getTime(),
+   legs:Array.isArray(x.legs)&&x.legs.length?x.legs:null,
+   co:Array.isArray(x.companions)?x.companions:[]
+  }));
+
+  PROF={};
+  (profiles||[]).forEach(x=>{
+   PROF[x.id]={
+    pseudo:x.username||'Utilisateur',
+    line:x.favorite_line||'1',
+    station:x.favorite_station||'',
+    share:!!x.share_stats,
+    sum:x.stats||null
+   };
+  });
+
+  REL=rels||[];
+  FR=REL.filter(x=>x.status==='accepted')
+   .map(x=>x.sender_id===ME.id?x.receiver_id:x.sender_id);
+
+ }catch(e){
+  console.error(e);
+  G('msg').textContent='Impossible de charger les données : '+e.message;
+  T=[];
+  PROF={};
+  REL=[];
+  FR=[];
+ }
+
+ ME.badges=badgeIds(T);
+ renderCmp();
+ if(isTab('hist'))hist();
+ if(isTab('st'))stats();
+ if(isTab('fr'))renderFr();
 }
-async function persistProfile(){if(!ME)return;const {error}=await sb.from('profiles').update({username:ME.pseudo,favorite_line:ME.line,favorite_station:ME.station,share_stats:ME.share,stats:fullStats()}).eq('id',ME.id);if(error)throw error}
-async function save(){if(!ME)return;const {error}=await sb.from('profiles').update({stats:fullStats()}).eq('id',ME.id);if(error)console.error('Sync statistiques',error)}
+
+async function persistProfile(){
+ if(!ME)return;
+ await api('/api/profiles/me',{
+  method:'PATCH',
+  body:JSON.stringify({
+   username:ME.pseudo,
+   favorite_line:ME.line,
+   favorite_station:ME.station,
+   share_stats:ME.share,
+   stats:fullStats()
+  })
+ });
+}
+
+async function save(){
+ if(!ME)return;
+ try{
+  await api('/api/profiles/me',{
+   method:'PATCH',
+   body:JSON.stringify({stats:fullStats()})
+  });
+ }catch(e){
+  console.error('Sync statistiques',e);
+ }
+}
 
 // ---------- Trajets avec changements, compagnons, badges ----------
 const legsOf=x=>x.legs&&x.legs.length?x.legs:[{l:x.l,a:x.a,b:x.b,p:x.p,d:x.d,k:x.k}];
@@ -243,8 +356,16 @@ async function add(){const g=curLeg();if(!g)return;const Ls=[...legs,g],p=[];
 Ls.forEach(x=>x.p.forEach((s,i)=>{if(i==0&&p.length&&p[p.length-1]==s)return;p.push(s)}));
 const sd=Ls.reduce((s,x)=>s+(x.d||(x.p.length-1)*108),0),sk=Ls.reduce((s,x)=>s+(x.k||(x.p.length-1)*750),0),first=Ls[0],last=Ls[Ls.length-1],t=new Date(G('d').value||Date.now());
 const row={user_id:ME.id,line_id:first.l,origin:first.a,destination:last.b,stations:p,duration_seconds:sd,distance_meters:sk,travelled_at:t.toISOString(),legs:Ls,companions:comp};
-const {data,error}=await sb.from('trips').insert(row).select().single();
-if(error){G('msg').textContent=/legs|companions|column/i.test(error.message)?'Base à mettre à jour : exécute le script SQL (colonnes legs et companions) dans Supabase.':'Erreur de synchronisation : '+error.message;return}
+let data;
+try{
+ data=await api('/api/trips',{
+  method:'POST',
+  body:JSON.stringify(row)
+ });
+}catch(error){
+ G('msg').textContent='Erreur de synchronisation : '+error.message;
+ return;
+}
 const before=new Set(ME.badges||[]);
 T.unshift({id:data.id,l:first.l,a:first.a,b:last.b,p,d:sd,k:sk,t:t.getTime(),legs:Ls,co:comp.slice()});
 legs=[];comp=[];chg=null;G('a').value=G('b').value='';G('d').value=nowLocal();ME.badges=badgeIds(T);await save();
@@ -363,9 +484,45 @@ function renderRes(){const e=G('fres');if(!e)return;const q=(G('fq').value||'').
 const r=Object.entries(PROF).filter(([id,p])=>id!==ME.id&&p.pseudo&&(p.pseudo.toLowerCase().includes(q)||(p.pseudo+'#'+id.slice(-4)).toLowerCase()===q)).slice(0,8);
 e.innerHTML=r.length?r.map(([id,p])=>{const rel=REL.find(x=>(x.sender_id===ME.id&&x.receiver_id===id)||(x.receiver_id===ME.id&&x.sender_id===id));const label=FR.includes(id)?'<span class="mut">Déjà ami</span>':rel?.status==='pending'?'<span class="mut">Demande en attente</span>':`<button class="chips" style="margin:0;border:0;background:none" data-af="${esc(id)}"><span style="padding:8px 13px;border-radius:99px;background:var(--g);color:#fff">Ajouter</span></button>`;return `<div class="row"><div class="t"><div class="av">${esc(p.pseudo[0].toUpperCase())}</div><div><b>${esc(p.pseudo)}</b><span class="mut">#${esc(id.slice(-4))}</span></div></div>${label}</div>`}).join(''):'<p class="mut">Aucun profil partagé trouvé. Ton ami doit activer le partage de son profil.</p>'}
 function renderFr(anm){const keep=G('fq')?G('fq').value:'';G('frb').innerHTML=frHTML();if(G('fq')){G('fq').value=keep;renderRes()}if(anm&&viewF)anim(G('frb'))}
-async function sendFriendRequest(id){const {error}=await sb.from('friendships').insert({sender_id:ME.id,receiver_id:id,status:'pending'});if(error){FMSG=error.message}else{FMSG='Demande envoyée !'}await loadCloud();renderFr()}
-async function answerFriendRequest(id,status){const {error}=await sb.from('friendships').update({status}).eq('id',id).eq('receiver_id',ME.id);if(error)FMSG=error.message;await loadCloud();renderFr()}
-async function removeFriend(id){const {error}=await sb.from('friendships').delete().or(`and(sender_id.eq.${ME.id},receiver_id.eq.${id}),and(sender_id.eq.${id},receiver_id.eq.${ME.id})`);if(error)FMSG=error.message;await loadCloud();renderFr()}
+
+async function sendFriendRequest(id){
+ try{
+  await api('/api/friendships',{
+   method:'POST',
+   body:JSON.stringify({receiver_id:id})
+  });
+  FMSG='Demande envoyée !';
+ }catch(e){
+  FMSG=e.message;
+ }
+ await loadCloud();
+ renderFr();
+}
+
+async function answerFriendRequest(id,status){
+ try{
+  await api('/api/friendships/'+encodeURIComponent(id),{
+   method:'PATCH',
+   body:JSON.stringify({status})
+  });
+ }catch(e){
+  FMSG=e.message;
+ }
+ await loadCloud();
+ renderFr();
+}
+
+async function removeFriend(id){
+ try{
+  await api('/api/friendships?friend_id='+encodeURIComponent(id),{
+   method:'DELETE'
+  });
+ }catch(e){
+  FMSG=e.message;
+ }
+ await loadCloud();
+ renderFr();
+}
 
 // ---------- Navigation ----------
 const TABS=[['go','🚇','Trajet'],['hist','📒','Historique'],['st','📊','Stats'],['fr','👥','Amis'],['me','🙂','Profil']];let tab='go';
@@ -388,7 +545,17 @@ else if(n=c('[data-l]')){cur=n.dataset.l;isOpen=false;if(!legs.length)G('a').val
 else if(n=c('[data-p]')){G(n.dataset.p).value=n.dataset.v;hideSug()}
 else if(c('[data-swap]')){const a=G('a').value;G('a').value=G('b').value;G('b').value=a}
 else if(c('[data-add]'))add();
-else if(n=c('[data-del]')){const i=+n.dataset.del;ask('Supprimer ce trajet de ton historique ?',async()=>{const x=T[i];if(x?.id){const {error}=await sb.from('trips').delete().eq('id',x.id).eq('user_id',ME.id);if(error){G('msg').textContent=error.message;return}}T.splice(i,1);await save();hist()})}
+else if(n=c('[data-del]')){const i=+n.dataset.del;ask('Supprimer ce trajet de ton historique ?',async()=>{const x=T[i];if(x?.id){if(x?.id){
+ try{
+  await api('/api/trips/'+encodeURIComponent(x.id),{
+   method:'DELETE'
+  });
+ }catch(error){
+  G('msg').textContent=error.message;
+  return;
+ }
+}
+T.splice(i,1);T.splice(i,1);await save();hist()})}
 else if(n=c('[data-sort]')){sortBy=n.dataset.sort;hist()}
 else if(n=c('[data-per]')){per=+n.dataset.per;stats()}
 else if(c('[data-share]')){ME.share=!ME.share;FMSG='';persistProfile().then(()=>loadCloud()).then(()=>renderFr()).catch(e=>{FMSG=e.message;ME.share=!ME.share;renderFr()})}
