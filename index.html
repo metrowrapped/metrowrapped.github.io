@@ -545,17 +545,27 @@ else if(n=c('[data-l]')){cur=n.dataset.l;isOpen=false;if(!legs.length)G('a').val
 else if(n=c('[data-p]')){G(n.dataset.p).value=n.dataset.v;hideSug()}
 else if(c('[data-swap]')){const a=G('a').value;G('a').value=G('b').value;G('b').value=a}
 else if(c('[data-add]'))add();
-else if(n=c('[data-del]')){const i=+n.dataset.del;ask('Supprimer ce trajet de ton historique ?',async()=>{const x=T[i];if(x?.id){if(x?.id){
- try{
-  await api('/api/trips/'+encodeURIComponent(x.id),{
-   method:'DELETE'
-  });
- }catch(error){
-  G('msg').textContent=error.message;
-  return;
- }
+
+else if(n=c('[data-del]')){
+ const i=+n.dataset.del;
+ ask('Supprimer ce trajet de ton historique ?',async()=>{
+  const x=T[i];
+  if(x?.id){
+   try{
+    await api('/api/trips/'+encodeURIComponent(x.id),{
+     method:'DELETE'
+    });
+   }catch(error){
+    G('msg').textContent=error.message;
+    return;
+   }
+  }
+  T.splice(i,1);
+  await save();
+  hist();
+ });
 }
-T.splice(i,1);T.splice(i,1);await save();hist()})}
+
 else if(n=c('[data-sort]')){sortBy=n.dataset.sort;hist()}
 else if(n=c('[data-per]')){per=+n.dataset.per;stats()}
 else if(c('[data-share]')){ME.share=!ME.share;FMSG='';persistProfile().then(()=>loadCloud()).then(()=>renderFr()).catch(e=>{FMSG=e.message;ME.share=!ME.share;renderFr()})}
