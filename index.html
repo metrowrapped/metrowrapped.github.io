@@ -445,7 +445,7 @@ const TB=[['T1','Bon mais pas sacré','😋'],['T2','longe seine','🌊'],['T3a'
 const XB=[['H','cap sur le grand nord','🏔️'],['J','Guillaume le conquérant','🦁'],['K','vous êtes perdus?','🧭'],['L','vieille branche','🌲'],['N','promenons nous dans les bois','🦌'],['P','champagne!','🍾'],['R','montargis ville fleurie','🌷'],['U','étrange découverte','🧙‍♂️'],['V','même en le voulant, c’est compliqué','🌧️']];
 const BADGES=[];
 const fin=(pre,arr,txt)=>arr.forEach(([id,n,e])=>BADGES.push({id:pre+id,e,n,d:txt+id.replace(/^T/,''),t:c=>isFin(c,id),p:c=>finProg(c,id)}));
-fin('m',MET,'Visiter toutes les stations de la ligne de métro ');fin('r',RB,'Visiter toutes les stations du RER ');fin('x',XB,'Visiter toutes les stations du Transilien ');fin('t',TB,'Visiter toutes les stations du tramway T');fin('c',[['C1','Suspendu','🚡']],'Visiter toutes les stations du câble ');
+fin('m',MET,'Visiter toutes les stations de la ligne de métro ');fin('r',RB,'Visiter toutes les stations du RER ');fin('x',XB,'Visiter toutes les stations du Transilien ');fin('t',TB,'Visiter toutes les stations du tramway T');fin('c',[['C1','Just hanging around','🚡']],'Visiter toutes les stations du câble ');
 const grp=(ids,c)=>[ids.filter(i=>isFin(c,i)).length,ids.length],M=MET.map(x=>x[0]),R5=RB.map(x=>x[0]),T14=TB.map(x=>x[0]),X9=XB.map(x=>x[0]);
 BADGES.push({id:'gm',e:'🚇',n:'Metro finisher',d:'Finir les 16 lignes de métro',t:c=>grp(M,c)[0]==16,p:c=>grp(M,c)},
 {id:'g2',e:'💼',n:'C’est SMIC c’est zéro c’est caissier',d:'Finir les lignes 3bis et 7bis',t:c=>isFin(c,'3bis')&&isFin(c,'7bis'),p:c=>grp(['3bis','7bis'],c)},
